@@ -10,35 +10,50 @@ using System.Threading.Tasks;
 
 namespace PocketSharp
 {
-    public class PocketClient : HttpClient
+    public class PocketClient : IPocketClient
     {
         private static string API_AUTH { get; } = "https://getpocket.com/v3/oauth/authorize";
         private static string API_AUTH_REQUEST { get; } = "https://getpocket.com/v3/oauth/request";
         private static string API_AUTH_BASE_ADDRESS { get; } = "https://getpocket.com/auth/authorize?request_token={0}";
         private static string API_ADD { get; } = "https://getpocket.com/v3/add";
+        private static PocketHttpHandler Handler { get; } = new PocketHttpHandler();
+        private static HttpClient Client { get; } = new HttpClient(Handler);
 
         public string AuthCode { get; private set; }
         public string ConsumerKey { get; private set; }
         public string AccessToken { get; private set; }
         public string UserName { get; private set; }
-
-        public PocketClient(string consumerKey) : base(new PocketHttpHandler())
+        
+        public static IPocketClient GetInstance(string consumerKey)
         {
-            this.ConsumerKey = consumerKey;
+            return GetInstance(consumerKey, string.Empty);
         }
 
-        private async Task<HttpResponseMessage> SendJsonAsync<T>(string requestUri, T obj)
+        public static IPocketClient GetInstance(string consumerKey, string accessToken)
+        {
+            return new PocketClient(consumerKey, accessToken);
+        }
+
+        private PocketClient(string consumerKey) : this(consumerKey, string.Empty) { }
+
+        private PocketClient(string consumerKey, string accessToken)
+        {
+            ConsumerKey = consumerKey;
+            AccessToken = accessToken;
+        }
+
+        private async Task<HttpResponseMessage> PostJsonAsync<T>(string requestUri, T obj)
         {
             string content = JsonHelper.Serialize(obj);
 
             var json = new StringContent(content, Encoding.UTF8, "application/json");
 
-            return await PostAsync(requestUri, json);
+            return await Client.PostAsync(requestUri, json);
         }
 
         private async Task<string> GetAuthCodeAsync()
         {
-            var response = await SendJsonAsync(API_AUTH_REQUEST, new AuthRequest
+            var response = await PostJsonAsync(API_AUTH_REQUEST, new AuthRequest
             {
                 ConsumerKey = ConsumerKey,
                 RedirectUri = "pocketapp1234:authorizationFinished",
@@ -59,7 +74,7 @@ namespace PocketSharp
 
         public async Task<bool> SendAuthCompleteAsync()
         {
-            var response = await SendJsonAsync(API_AUTH, new Auth
+            var response = await PostJsonAsync(API_AUTH, new Auth
             {
                 ConsumerKey = ConsumerKey,
                 Code = AuthCode,
@@ -81,7 +96,7 @@ namespace PocketSharp
         
         public async Task Add(string url, string title = "", string tweetId = "", IEnumerable<string> tags = null)
         {
-            var response = await SendJsonAsync(API_ADD, new Add
+            var response = await PostJsonAsync(API_ADD, new Add
             {
                 ConsumerKey = ConsumerKey,
                 AccessToken = AccessToken,
